@@ -1,0 +1,83 @@
+[
+  {
+    "query": "How does HPA scale pods?",
+    "latency_ms": 5.210999981500208,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=True"
+  },
+  {
+    "query": "How does HPA scale pods?",
+    "latency_ms": 0.6640999927185476,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=False, NLI=True"
+  },
+  {
+    "query": "How does HPA scale pods?",
+    "latency_ms": 0.7218999962788075,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=False"
+  },
+  {
+    "query": "Trace the S3 bucket provisioning module.",
+    "latency_ms": 0.42260001646354795,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=True"
+  },
+  {
+    "query": "Trace the S3 bucket provisioning module.",
+    "latency_ms": 0.3871999797411263,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=False, NLI=True"
+  },
+  {
+    "query": "Trace the S3 bucket provisioning module.",
+    "latency_ms": 0.3949000092688948,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=False"
+  },
+  {
+    "query": "Why did the Redis cache timeout during P1 outage?",
+    "latency_ms": 0.4839999892283231,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=True"
+  },
+  {
+    "query": "Why did the Redis cache timeout during P1 outage?",
+    "latency_ms": 0.7372999971266836,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=False, NLI=True"
+  },
+  {
+    "query": "Why did the Redis cache timeout during P1 outage?",
+    "latency_ms": 0.5858000076841563,
+    "is_verified": false,
+    "hallucination_detected": false,
+    "tokens_used": 0,
+    "citations_count": 0,
+    "ablation_state": "GraphRAG=True, NLI=False"
+  }
+]

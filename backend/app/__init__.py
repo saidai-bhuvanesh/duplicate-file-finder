@@ -1,0 +1,3 @@
+"""
+EnterpriseIT-RAG Backend Application.
+"""
