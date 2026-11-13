@@ -22,7 +22,10 @@ def create_celery_app() -> Celery:
     settings = get_settings()
     celery_cfg = settings.celery
 
-    app = Celery("enterpriseit_rag")
+    app = Celery(
+        "enterpriseit_rag",
+        include=["app.workers.tasks.ingestion_tasks"],
+    )
 
     # ── Broker / Backend ─────────────────────────────────────────────────────
     app.conf.broker_url = celery_cfg.broker_url
@@ -65,11 +68,6 @@ def create_celery_app() -> Celery:
 
     # ── Result Expiry ─────────────────────────────────────────────────────────
     app.conf.result_expires = 86400  # 24 hours
-
-    # ── Auto-discover tasks ───────────────────────────────────────────────────
-    app.autodiscover_tasks([
-        "app.workers.tasks",
-    ])
 
     # ── Beat Schedule (periodic tasks) ───────────────────────────────────────
     app.conf.beat_schedule = {

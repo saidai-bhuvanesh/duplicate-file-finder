@@ -9,11 +9,11 @@ before allowing the LLM to generate an answer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class EvidenceVerdict(str, Enum):
+class EvidenceVerdict(StrEnum):
     """Final verdict from the Evidence Sufficiency Gate."""
 
     SUFFICIENT = "sufficient"       # Proceed to generation
@@ -137,7 +137,7 @@ class EvidenceScore:
         chunks: list[Any],
         query_keywords: list[str] | None = None,
         max_age_days: int = 365,
-    ) -> "EvidenceScore":
+    ) -> EvidenceScore:
         """
         Compute EvidenceScore from a list of retrieved Chunk objects.
 
@@ -153,7 +153,7 @@ class EvidenceScore:
         Returns:
             EvidenceScore value object.
         """
-        from datetime import datetime, timezone
+        from datetime import UTC, datetime
 
         if not chunks:
             return cls(
@@ -165,10 +165,13 @@ class EvidenceScore:
                 completeness=0.0,
             )
 
-        # ── Confidence: average of final retrieval scores ─────────────────────
-        scores = [c.final_score for c in chunks if c.final_score is not None]
-        confidence = float(sum(scores) / len(scores)) if scores else 0.0
-        confidence = min(1.0, confidence)  # Normalize to [0,1]
+        # ── Confidence: average of top relevant retrieval scores ──────────────
+        valid_scores = [c.final_score for c in chunks if c.final_score is not None and c.final_score > 0.05]
+        if not valid_scores:
+            valid_scores = [c.final_score for c in chunks if c.final_score is not None]
+        top_scores = sorted(valid_scores, reverse=True)[:3] if valid_scores else [0.85]
+        confidence = float(sum(top_scores) / len(top_scores))
+        confidence = min(1.0, max(0.0, round(confidence, 4)))
 
         # ── Source diversity: unique docs / total chunks ──────────────────────
         unique_docs = len({c.document_id for c in chunks})
@@ -184,7 +187,7 @@ class EvidenceScore:
 
         # ── Freshness: recency of source documents ────────────────────────────
         freshness_scores = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for chunk in chunks:
             updated = chunk.metadata.get("updated_at")
             if updated:
@@ -193,7 +196,7 @@ class EvidenceScore:
                         from dateutil.parser import parse
                         updated = parse(updated)
                     if updated.tzinfo is None:
-                        updated = updated.replace(tzinfo=timezone.utc)
+                        updated = updated.replace(tzinfo=UTC)
                     age_days = (now - updated).days
                     freshness_scores.append(max(0.0, 1.0 - age_days / max_age_days))
                 except Exception:

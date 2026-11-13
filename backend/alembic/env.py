@@ -15,6 +15,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.core.config import get_settings
+from app.infrastructure.database import models  # noqa: F401
+from app.infrastructure.database.connection import Base
+
 # Alembic Config object
 config = context.config
 
@@ -22,19 +26,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import all models so autogenerate can detect them
-from app.infrastructure.database.connection import Base  # noqa: F401
-from app.infrastructure.database import models  # noqa: F401
-
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url with application settings
-try:
-    from app.core.config import get_settings
-    settings = get_settings()
-    config.set_main_option("sqlalchemy.url", settings.database.sync_url)
-except Exception:
-    pass  # Fall back to alembic.ini value
+config.set_main_option("sqlalchemy.url", get_settings().database.async_url)
 
 
 def run_migrations_offline() -> None:
@@ -77,10 +71,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        # Override URL for async driver
-        url=config.get_main_option("sqlalchemy.url", "").replace(
-            "postgresql+psycopg2", "postgresql+asyncpg"
-        ),
+        url=config.get_main_option("sqlalchemy.url"),
     )
 
     async with connectable.connect() as connection:
@@ -90,15 +81,8 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode using sync driver for simplicity."""
-    from sqlalchemy import create_engine
-    url = config.get_main_option("sqlalchemy.url")
-    connectable = create_engine(url, poolclass=pool.NullPool)
-
-    with connectable.connect() as connection:
-        do_run_migrations(connection)
-
-    connectable.dispose()
+    """Run migrations using the async PostgreSQL driver."""
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

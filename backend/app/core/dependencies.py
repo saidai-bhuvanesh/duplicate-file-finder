@@ -10,14 +10,22 @@ Provides typed, reusable dependencies for:
 
 from __future__ import annotations
 
-from typing import Annotated, AsyncGenerator
+import contextlib
+from collections.abc import AsyncGenerator
+import contextlib
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.services.document_service import DocumentService
 from app.core.config import Settings, get_settings
 from app.infrastructure.cache.redis_client import RedisClient
 from app.infrastructure.database.connection import AsyncSessionFactory
+
+if TYPE_CHECKING:
+    from app.domain.interfaces.chunk_repository import ChunkRepository
+    from app.domain.interfaces.document_repository import DocumentRepository
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
@@ -40,17 +48,23 @@ async def get_db_session() -> AsyncGenerator[AsyncSession | None, None]:
     Yields None if database is not reachable.
     """
     try:
-        async with AsyncSessionFactory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+        session = AsyncSessionFactory()
     except Exception:
         yield None
+        return
+
+    try:
+        yield session
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    except Exception:
+        raise
+    finally:
+        with contextlib.suppress(Exception):
+            await session.close()
 
 
 DatabaseSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -78,7 +92,7 @@ RedisClientDep = Annotated[RedisClient, Depends(get_redis_client)]
 
 def get_document_repository(
     session: DatabaseSessionDep,
-) -> "DocumentRepository":  # noqa: F821
+) -> DocumentRepository:
     """Provide a document repository backed by the current DB session."""
     from app.infrastructure.repositories.document_repository import (
         PostgresDocumentRepository,
@@ -89,7 +103,7 @@ def get_document_repository(
 
 def get_chunk_repository(
     session: DatabaseSessionDep,
-) -> "ChunkRepository":  # noqa: F821
+) -> ChunkRepository:
     """Provide a chunk repository backed by the current DB session."""
     from app.infrastructure.repositories.chunk_repository import (
         PostgresChunkRepository,
@@ -105,9 +119,8 @@ def get_document_service(
     session: DatabaseSessionDep,
     redis: RedisClientDep,
     settings: SettingsDep,
-) -> "DocumentService":  # noqa: F821
+) -> DocumentService:
     """Provide the document service with all its dependencies."""
-    from app.application.services.document_service import DocumentService
     from app.infrastructure.repositories.chunk_repository import PostgresChunkRepository
     from app.infrastructure.repositories.document_repository import (
         PostgresDocumentRepository,
@@ -121,4 +134,4 @@ def get_document_service(
     )
 
 
-DocumentServiceDep = Annotated["DocumentService", Depends(get_document_service)]
+DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]

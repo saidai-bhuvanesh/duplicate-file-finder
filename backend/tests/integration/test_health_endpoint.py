@@ -6,8 +6,9 @@ These tests run against the real FastAPI app (but mock external dependencies).
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 @pytest.mark.integration
@@ -79,18 +80,53 @@ class TestHealthEndpoints:
 
 
 @pytest.mark.integration
+class TestGraphStatsEndpoint:
+    @patch("app.api.v1.graph._graph_service.get_graph_stats", new_callable=AsyncMock)
+    def test_graph_stats_returns_totals(self, mock_stats, client):
+        mock_stats.return_value = {
+            "nodes": {"Service": 3},
+            "relationships": {"OWNS": 2},
+            "total_nodes": 3,
+            "total_relationships": 2,
+        }
+
+        response = client.get("/api/v1/graph/stats")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "nodes": {"Service": 3},
+            "relationships": {"OWNS": 2},
+            "total_nodes": 3,
+            "total_relationships": 2,
+            "status": "healthy",
+            "database": "neo4j",
+        }
+
+    @patch("app.api.v1.graph._graph_service.get_graph_stats", new_callable=AsyncMock)
+    def test_graph_stats_marks_database_unavailable(self, mock_stats, client):
+        mock_stats.side_effect = RuntimeError("Neo4j unavailable")
+
+        response = client.get("/api/v1/graph/stats")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "unavailable"
+        assert response.json()["total_nodes"] == 0
+
+
+@pytest.mark.integration
 class TestDocumentEndpoints:
     """Test suite for document CRUD API."""
 
     def test_create_document_returns_201(self, client):
         """POST /api/v1/documents/ should return 201 for valid request."""
-        from unittest.mock import AsyncMock
-        from app.domain.entities.document import (
-            Document, DocumentType, DocumentStatus, DocumentMetadata, SourceSystem
-        )
         from app.core.dependencies import get_document_service
-        from app.main import create_app
-        import asyncio
+        from app.domain.entities.document import (
+            Document,
+            DocumentMetadata,
+            DocumentStatus,
+            DocumentType,
+            SourceSystem,
+        )
 
         doc = Document(
             id="test-id-123",
@@ -145,3 +181,6 @@ class TestDocumentEndpoints:
         schema = response.json()
         assert schema["info"]["title"] == "EnterpriseIT-RAG API"
         assert "paths" in schema
+        assert "/api/v1/documents/upload" in schema["paths"]
+        assert "/api/v1/graph/nodes" in schema["paths"]
+        assert "/api/v1/graph/cypher" in schema["paths"]

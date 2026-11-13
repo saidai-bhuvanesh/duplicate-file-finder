@@ -146,11 +146,27 @@ class Citation:
     chunk_id: str
     document_id: str
     document_title: str
-    source_url: str | None
-    section_title: str | None
-    page_number: int | None
-    relevance_score: float
+    source_url: str | None = None
+    section_title: str | None = None
+    page_number: int | None = None
+    relevance_score: float = 0.0
     quote: str | None = None  # Verbatim quote from source
+    section_path: str | None = None
+    snippet: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "document_id": self.document_id,
+            "document_title": self.document_title,
+            "source_url": self.source_url,
+            "section_title": self.section_title,
+            "page_number": self.page_number,
+            "relevance_score": self.relevance_score,
+            "quote": self.quote,
+            "section_path": self.section_path,
+            "snippet": self.snippet or self.quote or "",
+        }
 
 
 @dataclass

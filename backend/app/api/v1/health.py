@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import platform
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -43,7 +43,7 @@ async def health_check() -> dict:
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "uptime_seconds": round(time.time() - _startup_time, 2),
     }
 
@@ -61,8 +61,6 @@ async def readiness_check() -> dict:
     Checks PostgreSQL and Redis connectivity.
     Returns 503 if any critical dependency is unavailable.
     """
-    from fastapi import HTTPException
-
     checks: dict[str, bool] = {}
     start = time.perf_counter()
 
@@ -80,13 +78,16 @@ async def readiness_check() -> dict:
     response = {
         "status": "ready" if all_healthy else "not_ready",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "check_latency_ms": latency_ms,
     }
 
     if not all_healthy:
         logger.warning("readiness_check_failed", checks=checks)
-        raise HTTPException(status_code=503, detail=response)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=response,
+        )
 
     return response
 
@@ -106,5 +107,5 @@ async def version_info() -> dict:
         "environment": settings.app.app_env,
         "python_version": platform.python_version(),
         "platform": platform.system(),
-        "build_time": datetime.utcnow().isoformat(),
+        "build_time": datetime.now(UTC).isoformat(),
     }

@@ -32,7 +32,7 @@ class NLIVerifier:
                 try:
                     from sentence_transformers import CrossEncoder
                     logger.info("loading_nli_model", model_name=self.model_name)
-                    self._model = CrossEncoder(self.model_name, device=get_settings().embedding.device)
+                    self._model = CrossEncoder(self.model_name, device=get_settings().embedding.device, local_files_only=True)
                 except Exception as exc:
                     logger.warning("nli_model_load_fallback", error=str(exc))
                     self._model = "fallback"

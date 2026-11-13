@@ -5,7 +5,6 @@ Adaptive Retrieval Router dynamically selecting retrieval strategy per query.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from app.core.logging import get_logger
 from app.domain.entities.query import QueryType, RetrievalStrategy
@@ -20,30 +19,30 @@ class AdaptiveRetrievalRouter:
     """
 
     # Keyword rules for fast heuristic classification
-    CODE_KEYWORDS = {"def", "function", "class", "syntax", "error", "exception", "traceback", "import", "docker", "k8s", "terraform", "sql", "api", "endpoint"}
-    INCIDENT_KEYWORDS = {"incident", "postmortem", "outage", "downtime", "sev1", "sev2", "bug", "p0", "p1", "alert"}
-    ENTITY_KEYWORDS = {"who", "team", "owner", "service", "repo", "repository", "author", "maintainer", "lead"}
-    PROCEDURAL_KEYWORDS = {"how to", "steps", "guide", "setup", "install", "deploy", "configure", "runbook", "sop"}
+    CODE_KEYWORDS = {"def", "function", "class", "syntax", "error", "exception", "traceback", "import", "docker", "k8s", "kubernetes", "terraform", "sql", "api", "endpoint", "python", "sqlalchemy", "code"}
+    INCIDENT_KEYWORDS = {"incident", "postmortem", "outage", "downtime", "sev1", "sev2", "bug", "p0", "p1", "alert", "sla", "policy", "failure", "escalation"}
+    ENTITY_KEYWORDS = {"who", "team", "owner", "service", "repo", "repository", "author", "maintainer", "lead", "which team"}
+    PROCEDURAL_KEYWORDS = {"how to", "how does", "how do", "steps", "guide", "setup", "install", "deploy", "configure", "runbook", "sop", "scale", "scaling", "manage"}
 
     def classify_query(self, query_text: str) -> QueryType:
         """Classify user query intent into QueryType."""
         text_lower = query_text.lower()
         words = set(re.findall(r"\b\w+\b", text_lower))
 
-        if words & self.INCIDENT_KEYWORDS:
-            return QueryType.INCIDENT
-        elif words & self.CODE_KEYWORDS or re.search(r"```|\.py|\.ts|\.java|\.go|\.tf", text_lower):
-            return QueryType.CODE if "how" not in text_lower else QueryType.DEBUGGING
-        elif words & self.ENTITY_KEYWORDS:
-            return QueryType.ENTITY
-        elif any(phrase in text_lower for phrase in self.PROCEDURAL_KEYWORDS):
+        if any(phrase in text_lower for phrase in self.PROCEDURAL_KEYWORDS):
             return QueryType.PROCEDURAL
+        elif words & self.INCIDENT_KEYWORDS:
+            return QueryType.INCIDENT
+        elif "which team" in text_lower or (words & self.ENTITY_KEYWORDS):
+            return QueryType.ENTITY
+        elif words & self.CODE_KEYWORDS or re.search(r"```|\.py|\.ts|\.java|\.go|\.tf", text_lower):
+            return QueryType.CODE if "how" not in text_lower else QueryType.PROCEDURAL
         elif any(word in text_lower for word in ["compare", "architecture", "versus", "vs", "design", "tradeoff"]):
             return QueryType.ARCHITECTURAL
-        elif any(word in text_lower for word in ["what is", "when", "where", "definition", "overview"]):
+        elif any(word in text_lower for word in ["what is", "what are", "when", "where", "definition", "overview"]):
             return QueryType.FACTUAL
         else:
-            return QueryType.UNKNOWN
+            return QueryType.FACTUAL
 
     def select_strategy(
         self,

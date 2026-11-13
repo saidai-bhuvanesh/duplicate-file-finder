@@ -17,8 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --user --no-warn-script-location -r requirements.txt
+COPY pyproject.toml README.md ./
+RUN python -c "import tomllib; dependencies = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; open('/tmp/requirements.txt', 'w').write('\n'.join(dependencies))" \
+    && pip install --user --no-warn-script-location --no-deps --extra-index-url https://download.pytorch.org/whl/cpu "torch==2.8.0+cpu" \
+    && pip install --user --no-warn-script-location -r /tmp/requirements.txt
 
 # --- Stage 2: Final runtime container ---
 FROM python:3.11-slim AS runtime
@@ -31,6 +33,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    libmagic1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,6 +46,6 @@ COPY --chown=appuser:appuser . /app
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/health/readiness || exit 1
+    CMD curl -f http://localhost:8000/ready || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"]

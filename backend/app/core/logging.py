@@ -1,104 +1,87 @@
 """
-Structured logging configuration using structlog.
+Structured logging fallback using Python's standard logging module.
 
 Provides:
-- JSON logging in production
-- Pretty console logging in development
+- Compatible logger API with structured key-value logging
 - Request context binding (request_id, user_id)
-- Performance timing helpers
+- Performance timing helpers (log_duration)
 """
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import sys
 import time
 from contextlib import contextmanager
 from typing import Any, Generator
 
-import structlog
-from structlog.types import FilteringBoundLogger
+FilteringBoundLogger = Any
+
+_request_ctx: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("request_ctx", default={})
+
+
+def _get_context() -> dict[str, Any]:
+    return _request_ctx.get()
+
+
+class StructlogCompatLogger:
+    """Wrapper around logging.Logger to mimic structlog's API."""
+
+    def __init__(self, logger: logging.Logger, context: dict[str, Any] | None = None) -> None:
+        self._logger = logger
+        self._context = context or {}
+
+    def bind(self, **new_values: Any) -> StructlogCompatLogger:
+        merged = {**self._context, **new_values}
+        return StructlogCompatLogger(self._logger, merged)
+
+    def _log(self, level: int, event: str, *args: Any, **kwargs: Any) -> None:
+        if not self._logger.isEnabledFor(level):
+            return
+        exc_info = kwargs.pop("exc_info", None)
+        ctx = {**_get_context(), **self._context, **kwargs}
+        if ctx:
+            details = " ".join(f"{k}={v}" for k, v in ctx.items())
+            msg = f"{event} | {details}"
+        else:
+            msg = event
+        self._logger.log(level, msg, *args, exc_info=exc_info)
+
+    def debug(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.DEBUG, event, *args, **kwargs)
+
+    def info(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.INFO, event, *args, **kwargs)
+
+    def warning(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.WARNING, event, *args, **kwargs)
+
+    def error(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.ERROR, event, *args, **kwargs)
+
+    def critical(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.CRITICAL, event, *args, **kwargs)
+
+    def exception(self, event: str, *args: Any, **kwargs: Any) -> None:
+        self._log(logging.ERROR, event, *args, exc_info=True, **kwargs)
 
 
 def configure_logging(log_level: str = "INFO", is_production: bool = False) -> None:
-    """
-    Configure structlog for the application.
-
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-        is_production: If True, uses JSON renderer. Otherwise pretty console.
-    """
-    shared_processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.UnicodeDecoder(),
-    ]
-
-    if is_production:
-        renderer: Any = structlog.processors.JSONRenderer()
-    else:
-        renderer = structlog.dev.ConsoleRenderer(
-            colors=True,
-            exception_formatter=structlog.dev.plain_traceback,
-        )
-
-    structlog.configure(
-        processors=[
-            *shared_processors,
-            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-        ],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, log_level.upper(), logging.INFO)
-        ),
-        cache_logger_on_first_use=True,
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        stream=sys.stdout,
+        force=True,
     )
-
-    formatter = structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=shared_processors,
-        processors=[
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            renderer,
-        ],
-    )
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
-    root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
-
-    # Silence noisy libraries
-    for noisy_logger in [
-        "uvicorn.access",
-        "httpx",
-        "httpcore",
-        "asyncio",
-    ]:
+    for noisy_logger in ["uvicorn.access", "httpx", "httpcore", "asyncio"]:
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
-def get_logger(name: str | None = None, **initial_values: Any) -> FilteringBoundLogger:
-    """
-    Get a structlog logger instance.
-
-    Args:
-        name: Logger name (usually __name__).
-        **initial_values: Initial context key-value pairs to bind.
-
-    Returns:
-        A structlog bound logger.
-
-    Usage:
-        logger = get_logger(__name__, component="retrieval")
-        logger.info("Query processed", query_id="abc123", latency_ms=45.2)
-    """
-    logger = structlog.get_logger(name)
+def get_logger(name: str | None = None, **initial_values: Any) -> StructlogCompatLogger:
+    base_logger = logging.getLogger(name or "app")
+    logger = StructlogCompatLogger(base_logger)
     if initial_values:
         logger = logger.bind(**initial_values)
     return logger
@@ -110,51 +93,27 @@ def bind_request_context(
     path: str | None = None,
     method: str | None = None,
 ) -> None:
-    """
-    Bind request context variables to the current async context.
-
-    These values will automatically appear in all log calls made within
-    the same async context (FastAPI request lifecycle).
-
-    Args:
-        request_id: Unique request identifier.
-        user_id: Authenticated user identifier.
-        path: HTTP request path.
-        method: HTTP method.
-    """
-    ctx: dict[str, Any] = {"request_id": request_id}
+    ctx = dict(_request_ctx.get())
+    ctx["request_id"] = request_id
     if user_id:
         ctx["user_id"] = user_id
     if path:
         ctx["path"] = path
     if method:
         ctx["method"] = method
-    structlog.contextvars.bind_contextvars(**ctx)
+    _request_ctx.set(ctx)
 
 
 def clear_request_context() -> None:
-    """Clear bound context variables after request completion."""
-    structlog.contextvars.clear_contextvars()
+    _request_ctx.set({})
 
 
 @contextmanager
 def log_duration(
-    logger: FilteringBoundLogger,
+    logger: Any,
     operation: str,
     **extra: Any,
 ) -> Generator[None, None, None]:
-    """
-    Context manager that logs the duration of an operation.
-
-    Args:
-        logger: Structlog logger instance.
-        operation: Name of the operation being timed.
-        **extra: Additional key-value pairs to include in the log.
-
-    Usage:
-        with log_duration(logger, "faiss_search", top_k=5):
-            results = faiss_index.search(query_embedding)
-    """
     start = time.perf_counter()
     try:
         yield

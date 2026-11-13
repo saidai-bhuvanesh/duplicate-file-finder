@@ -97,32 +97,37 @@ class QueryService:
         halluc_risk = 1.0 - evidence_dict.get("overall_score", 0.8)
 
         # Log query to PostgreSQL (Best Effort)
-        try:
-            query_log = QueryLogModel(
-                id=agent_state["query_id"],
-                query_text=query_text,
-                query_type=agent_state.get("query_type", QueryType.UNKNOWN.value),
-                retrieval_strategy=strat_str,
-                status=AnswerStatus.COMPLETED.value if agent_state.get("is_verified") else AnswerStatus.FAILED.value,
-                answer=agent_state.get("verified_answer", ""),
-                confidence_score=conf_score,
-                hallucination_risk=halluc_risk,
-                evidence_quality=evidence_dict,
-                citations=[c.to_dict() for c in citations],
-                agent_trace=agent_state.get("agent_trace", []),
-                filters_applied=filters or {},
-                total_latency_ms=total_latency,
-                retrieval_latency_ms=total_latency * 0.4,
-                llm_latency_ms=total_latency * 0.6,
-                total_tokens_used=agent_state.get("total_tokens_used", 0),
-                estimated_cost_usd=agent_state.get("estimated_cost_usd", 0.0),
-                user_id=user_id,
-                session_id=session_id,
-            )
-            self.session.add(query_log)
-            await self.session.commit()
-        except Exception as db_exc:
-            logger.warning("db_logging_skipped", error=str(db_exc))
+        if self.session is not None:
+            try:
+                query_log = QueryLogModel(
+                    id=agent_state["query_id"],
+                    query_text=query_text,
+                    query_type=agent_state.get("query_type", QueryType.UNKNOWN.value),
+                    retrieval_strategy=strat_str,
+                    status=AnswerStatus.COMPLETED.value if agent_state.get("is_verified") else AnswerStatus.FAILED.value,
+                    answer=agent_state.get("verified_answer", ""),
+                    confidence_score=conf_score,
+                    hallucination_risk=halluc_risk,
+                    evidence_quality=evidence_dict,
+                    citations=[c.to_dict() for c in citations],
+                    agent_trace=agent_state.get("agent_trace", []),
+                    filters_applied=filters or {},
+                    total_latency_ms=total_latency,
+                    retrieval_latency_ms=total_latency * 0.4,
+                    llm_latency_ms=total_latency * 0.6,
+                    total_tokens_used=agent_state.get("total_tokens_used", 0),
+                    estimated_cost_usd=agent_state.get("estimated_cost_usd", 0.0),
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                self.session.add(query_log)
+                await self.session.commit()
+            except Exception as db_exc:
+                logger.warning("db_logging_skipped", error=str(db_exc))
+                try:
+                    await self.session.rollback()
+                except Exception:
+                    pass
 
         logger.info(
             "query_execution_logged",

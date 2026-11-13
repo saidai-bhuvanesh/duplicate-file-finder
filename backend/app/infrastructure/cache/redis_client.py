@@ -66,11 +66,16 @@ class RedisClient:
 
     async def ping(self) -> bool:
         """Check Redis connectivity."""
+        import os
+        import asyncio
+
+        if os.environ.get("SKIP_DB_PING"):
+            return False
         try:
-            result = await self._client.ping()
+            result = await asyncio.wait_for(self._client.ping(), timeout=0.4)
             return bool(result)
         except Exception as exc:
-            logger.error("redis_ping_failed", error=str(exc))
+            logger.warning("redis_health_check_failed", error=str(exc))
             return False
 
     async def get(self, key: str) -> Any | None:

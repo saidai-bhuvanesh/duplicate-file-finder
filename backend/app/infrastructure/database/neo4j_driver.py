@@ -51,6 +51,16 @@ class Neo4jClient:
             logger.error("neo4j_connectivity_failed", error=str(exc))
             return False
 
+    async def is_reachable(self) -> bool:
+        """Fast non-blocking socket probe to check if Neo4j port is listening."""
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.2)
+                return sock.connect_ex(("127.0.0.1", 7687)) == 0
+        except Exception:
+            return False
+
     async def execute_query(
         self,
         cypher: str,
@@ -60,24 +70,21 @@ class Neo4jClient:
         """
         Execute a Cypher query and return list of result records as dictionaries.
         """
+        if not await self.is_reachable():
+            raise GraphDatabaseError("Neo4j database is offline or unreachable on localhost:7687", query=cypher)
+
         driver = await self.get_driver()
         params = parameters or {}
 
         try:
             async with driver.session(database=self.database) as session:
+                async def run_query(tx: Any) -> list[dict[str, Any]]:
+                    result = await tx.run(cypher, params)
+                    return [record.data() async for record in result]
+
                 if write:
-                    result = await session.execute_write(
-                        lambda tx: tx.run(cypher, params)
-                    )
-                else:
-                    result = await session.execute_read(
-                        lambda tx: tx.run(cypher, params)
-                    )
-                
-                records = []
-                async for record in result:
-                    records.append(record.data())
-                return records
+                    return await session.execute_write(run_query)
+                return await session.execute_read(run_query)
         except Exception as exc:
             logger.error("cypher_execution_failed", cypher=cypher[:100], error=str(exc))
             raise GraphDatabaseError(f"Neo4j query execution failed: {exc}", query=cypher) from exc

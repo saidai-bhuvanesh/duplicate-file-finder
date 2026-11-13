@@ -130,20 +130,25 @@ async def drop_all_tables() -> None:
 
 
 async def check_database_health() -> bool:
-    """
-    Perform a lightweight health check against the database.
+    import os
+    import asyncio
 
-    Returns:
-        True if database is reachable and responsive.
-    """
+    if os.environ.get("SKIP_DB_PING"):
+        return False
+
     try:
         from sqlalchemy import text
+
         engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+
+        async def _ping():
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        await asyncio.wait_for(_ping(), timeout=0.4)
         return True
     except Exception as exc:
-        logger.error("database_health_check_failed", error=str(exc))
+        logger.warning("database_health_check_failed", error=str(exc))
         return False
 
 

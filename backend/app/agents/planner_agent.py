@@ -21,6 +21,11 @@ class PlannerAgent:
         query_text = state["query_text"]
         logger.info("planner_agent_planning", query=query_text)
 
+        from app.retrieval.adaptive_router import AdaptiveRetrievalRouter
+        router = AdaptiveRetrievalRouter()
+        q_type = router.classify_query(query_text)
+        state["query_type"] = q_type.value
+
         # Decompose query into sub-queries
         sub_queries = [query_text]
         if " and " in query_text.lower() or " vs " in query_text.lower() or " compare " in query_text.lower():
